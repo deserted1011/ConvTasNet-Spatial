@@ -1,0 +1,7 @@
+文件,room_name,distance_true_m,sir_set_db,snr_set_db,delta_azimuth_deg,interf_azimuth_deg,arrays,ref_channel,fs,n_channels,n_samples,utt_target_spk,utt_interf_spk,utt_target_text,说明
+main_hall_pos_d10m_1089-134691-0003.wav,大厅·中庭,10.0,0.0,,90.0,90.0,linear3+circ4,1,16000,7,35266,1089,8555,THE UNIVERSITY,双人混合（目标人 + 干扰人）
+main_meeting_pos_d8m_1580-141083-0053.wav,小会议室,8.0,0.0,,90.0,-90.0,linear3+circ4,1,16000,7,64613,1580,7729,YOU HAVEN'T SEEN ANY OF THEM NO SIR,双人混合（目标人 + 干扰人）
+main_meeting_pos_d8m_1089-134691-0003.wav,小会议室,8.0,0.0,,90.0,90.0,linear3+circ4,1,16000,7,35173,1089,8555,THE UNIVERSITY,双人混合（目标人 + 干扰人）
+main_office_pos_d5m_1580-141083-0053.wav,开放办公室,5.0,0.0,,90.0,-90.0,linear3+circ4,1,16000,7,64473,1580,7729,YOU HAVEN'T SEEN ANY OF THEM NO SIR,双人混合（目标人 + 干扰人）
+main_office_pos_d5m_1089-134691-0003.wav,开放办公室,5.0,0.0,,90.0,90.0,linear3+circ4,1,16000,7,35033,1089,8555,THE UNIVERSITY,双人混合（目标人 + 干扰人）
+main_hall_neg_d10m_1089-134686-0014.wav,大厅·中庭,10.0,,,,,linear3+circ4,1,16000,7,36066,1089,,HE TRIED TO THINK HOW IT COULD BE,负向（只有干扰人、无目标人）
