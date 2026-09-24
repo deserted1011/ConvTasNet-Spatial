@@ -2,9 +2,8 @@
 # -*- coding: utf-8 -*-
 """spatial_feat.py —— 六通道空间特征提取器（ITD / ILD），单文件、不依赖 torch。
 
-这是臂 B 的**输入侧**：网络吃的是 [6, L] 的空间特征，不是原始多通道波形。
-口径与训练时**逐位一致**（常量、窗、限带、搜索窗、夹取顺序全部照搬生成侧
-`sim/spatial_feat.py`，只去掉对工程目录内部的依赖）。
+这是本模型的**输入侧**：网络吃的是 [6, L] 的空间特征，不是原始多通道波形。
+口径与训练时**逐位一致**（常量、窗、限带、搜索窗、夹取顺序全部照搬训练侧的数据生成实现）。
 
     几何：linear3，ch0 / ch1 / ch2 间距 2 cm，**ch1 = 参考麦**，16 kHz
     六通道顺序（写死，错了不报错）：
@@ -19,7 +18,7 @@
     python spatial_feat.py --wav 样本.wav                  # 看一条 wav 的特征形状与量级
     python spatial_feat.py --wav 样本.wav --save-npy out.npy --stats space_feat_stats.json
 
-被 separate_B.py 调用，也可单独当库用：
+被 separate.py 调用，也可单独当库用：
     from spatial_feat import extract, apply_scaler
     feat = extract(multi_ch, sr=16000)      # [6, L] float32，原始量纲（已夹取）
     feat_z = apply_scaler(feat, "space_feat_stats.json")   # z-score，喂给网络的就是这份
@@ -124,8 +123,8 @@ def extract(multi_ch, sr=FS, diag=None):
 
     Args:
         multi_ch: [C, T] float32，C >= 3，取前 3 路（ch0/ch1/ch2 = linear3，ch1 为参考麦）
-        sr: 采样率，**必须是 16000**（重采样请在调用前做，见 separate_B.py）
-        diag: 传一个 dict 进来，函数顺手把两个质检计数写进去（给 separate_B.py 打日志/画图用）：
+        sr: 采样率，**必须是 16000**（重采样请在调用前做，见 separate.py）
+        diag: 传一个 dict 进来，函数顺手把两个质检计数写进去（给 separate.py 打日志/画图用）：
               diag["over"][k] = 第 k 对通道**夹取前** |ITD| 超过几何上限的帧数（物理上不可能 -> 选错峰）
               diag["edge"][k] = 第 k 对通道**夹取前** |ITD| 贴到搜索窗边界的帧数（估计器失效）
               计数必须在夹取**之前**统计 —— 夹取之后恒为 0，数字会失去含义
@@ -289,7 +288,7 @@ def main():
     x, sr = _read_wav(args.wav)
     print("读入 %s：%d 通道 / %d Hz / %d 样本（%.2f 秒）" % (args.wav, x.shape[0], sr, x.shape[1], x.shape[1] / sr))
     if sr != FS:
-        raise SystemExit("采样率应为 %d Hz，实际 %d：请先重采样（separate_B.py 会自动做）" % (FS, sr))
+        raise SystemExit("采样率应为 %d Hz，实际 %d：请先重采样（separate.py 会自动做）" % (FS, sr))
     f = extract(x, sr=sr)
     print("特征 [%d, %d]，逐通道 raw 统计：" % f.shape)
     for i, nm in enumerate(FEAT_NAMES):

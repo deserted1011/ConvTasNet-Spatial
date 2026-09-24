@@ -7,7 +7,7 @@
 | `conv_tasnet_spatial.py`、`训练记录/代码/conv_tasnet_spatial.py` 里的网络定义 | asteroid 0.7.0 | **MIT** |
 | 本仓库其余原创代码与文档 | 拾音客 | **BSD-3-Clause**（根目录 [`LICENSE`](LICENSE)） |
 | `训练记录/代码/pretrained/ConvTasNet_Libri2Mix_sepclean_16k/pytorch_model.bin`（原样再分发） | Cosentino Joris | **CC BY-SA 4.0** |
-| `臂B_模型.pt`、`训练记录/ckpt_B_ep30.pt`（微调权重与训练检查点，**改编物**） | 拾音客（改编自上一行） | **CC BY-SA 4.0** |
+| `convtasnet_spatial.pt`、`训练记录/ckpt_ep30.pt`（微调权重与训练检查点，**改编物**） | 拾音客（改编自上一行） | **CC BY-SA 4.0** |
 | `素材/` 中的 6 条样本（**已做修改**：干声 + 自建 RIR 仿真混合） | LibriSpeech + 拾音客 | 语音 **CC BY 4.0**；RIR 自建 |
 | 房间冲激响应（RIR）的仿真方法 | pyroomacoustics | **MIT** |
 | 算法 | Conv-TasNet（Luo & Mesgarani, TASLP 2019） | 论文 |
@@ -18,11 +18,10 @@
 
 ## 1. asteroid —— MIT
 
-`conv_tasnet_spatial.py`（纯 PyTorch 版）与留档的 `训练记录/代码/conv_tasnet_spatial.py`（训练侧版本）
-中的 Conv-TasNet 网络定义（`FreeFB` / `Conv1DBlock` / `TCN` / `Masker` / `SeparationModel` 等）
-均来自 [asteroid](https://github.com/asteroid-team/asteroid) 0.7.0 的对应模块：前者是它的**逐行等价移植**
-（目的是去掉 `asteroid` 依赖、只留 `torch`），后者在训练时直接复用其实现。
-因此这部分代码按 asteroid 的 MIT 许可使用与再分发。
+`conv_tasnet_spatial.py`（以及留档的 `训练记录/代码/conv_tasnet_spatial.py`）中的 Conv-TasNet
+网络定义（`FreeFB` / `Conv1DBlock` / `TCN` / `Masker` / `SeparationModel` 等）是
+[asteroid](https://github.com/asteroid-team/asteroid) 0.7.0 对应模块的**逐行等价移植**，
+改写目标是去掉 `asteroid` 依赖、只留 `torch`。因此这部分代码按 asteroid 的 MIT 许可使用与再分发。
 
 ```
 MIT License
@@ -59,7 +58,7 @@ SOFTWARE.
 `训练记录/代码/pretrained/ConvTasNet_Libri2Mix_sepclean_16k/pytorch_model.bin`
 （20 394 640 B / md5 `42e901d57d7c2f79b9d8a74a8077b7b0`），**原样未改动**。
 
-**微调权重**：`臂B_模型.pt`（以及训练检查点 `训练记录/ckpt_B_ep30.pt`，内含微调后的参数）
+**微调权重**：`convtasnet_spatial.pt`（以及训练检查点 `训练记录/ckpt_ep30.pt`，内含微调后的参数）
 是上件权重的**改编物（Adapted Material）**，
 改动只有两处：
 
@@ -73,7 +72,7 @@ SOFTWARE.
 - 署名（Attribution）：**Cosentino Joris**
 - 许可（License）：**Creative Commons Attribution-ShareAlike 4.0 International（CC BY-SA 4.0）**
   —— 许可原文 <https://creativecommons.org/licenses/by-sa/4.0/legalcode>
-- 因此本仓库的 `臂B_模型.pt` 与 `训练记录/ckpt_B_ep30.pt` **同样以 CC BY-SA 4.0 提供**。
+- 因此本仓库的 `convtasnet_spatial.pt` 与 `训练记录/ckpt_ep30.pt` **同样以 CC BY-SA 4.0 提供**。
   您再分发或改编它时，请保留上面的署名，并以同样许可发布您的版本。
 - 模型卡自述：该权重是 *LibriSpeech ASR corpus*（CC BY 4.0）的衍生作品。
   其许可标注本身前后不一致（元数据写 `cc-by-sa-4.0`，正文写 `Attribution-ShareAlike 3.0 Unported`），

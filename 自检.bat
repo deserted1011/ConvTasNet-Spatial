@@ -3,7 +3,7 @@ setlocal
 cd /d "%~dp0"
 
 echo ============================================================
-echo   armB model  ::  quick self-check
+echo   ConvTasNet-Spatial  ::  quick self-check
 echo ============================================================
 echo.
 
@@ -37,7 +37,7 @@ echo       %SAMPLE%
 echo       any sample is fine here - this only proves the whole pipeline runs
 echo.
 if not exist check_out mkdir check_out
-%PY% separate_B.py "%SAMPLE%" --outdir check_out
+%PY% separate.py "%SAMPLE%" --outdir check_out
 if errorlevel 1 goto failed
 
 echo.

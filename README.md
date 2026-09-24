@@ -1,9 +1,8 @@
-# 远场目标说话人精准提取 · 臂 B
+# 远场双说话人分离 · Conv-TasNet + 6 路 ITD/ILD 空间特征早融合
 
-**Conv-TasNet 底座 + 6 路 ITD/ILD 空间特征早融合（微调 30 轮）**
+**纯 PyTorch 实现，离线可跑，只需要 `torch` + `numpy`。**
 
 > 输入一段 **≥3 通道**的远场阵列录音，输出 **两路**近场人声。
-> 纯 PyTorch 实现，**离线可跑**，只需要 `torch` + `numpy`。
 
 本仓库是 **2026 iCAN 大学生创新创业大赛 AI 应用创新挑战赛**参赛作品的模型与源代码。
 模型以官方 Conv-TasNet（`JorisCos/ConvTasNet_Libri2Mix_sepclean_16k`）为起点，
@@ -18,7 +17,7 @@ pip install torch numpy soundfile scipy        # torch 用 CPU 版即可
 
 python conv_tasnet_spatial.py --check          # 按 config.json 建网 + 载权重 + 前向 → PASS
 python spatial_feat.py --selftest              # 特征提取器自校验 → PASS
-python separate_B.py 素材/main_meeting_pos_d8m_1580-141083-0053.wav --outdir 结果
+python separate.py 素材/main_meeting_pos_d8m_1580-141083-0053.wav --outdir 结果
 ```
 
 输出 `结果/*_spk1.wav` 与 `*_spk2.wav` 两路 16 kHz 语音。
@@ -46,17 +45,17 @@ python separate_B.py 素材/main_meeting_pos_d8m_1580-141083-0053.wav --outdir �
 | SI-SDR（选路后） | **6.3433 dB** |
 | SI-SDRi（选路后） | **6.3441 dB**（95% CI [6.0652, 6.6266]） |
 | WER | **0.3377**（混合直连 0.5809，相对降 **41.9%**） |
-| 与对照臂 A 的差 | ΔSI-SDRi **+0.0156 dB**（95% CI [−0.0118, +0.0447]，句级 **p = 0.62**，**不显著**） |
-| ΔWER（对照臂 A） | **−0.0012**（句级 p = 0.68） |
+| 与单通道基线（同数据、同轮数微调）的差 | ΔSI-SDRi **+0.0156 dB**（95% CI [−0.0118, +0.0447]，句级 **p = 0.62**，**不显著**） |
+| ΔWER（同单通道基线） | **−0.0012**（句级 p = 0.68） |
 
 **如实说明**（这也是本仓库最想说清楚的一件事）：
 
-- 空间特征带来的增益**未达到**方案预期（0.5–1.5 dB），**句级统计不显著**；
+- 空间特征带来的增益**很小**（+0.0156 dB），**句级统计不显著**；
 - 分房间：`office` +0.0086 dB（p = 0.51）、`meeting` +0.0079（p = 0.88）、`hall` +0.0303（p = 0.57）；
 - ±45° 干扰方位下 +0.0173 dB（p = 0.39）—— 只能说"**未观察到崩塌**"，不能说"有提升"；
 - 10 m 距离档结果不稳（正负向都出现过波动）；
 - 负向样本（只有干扰人、无目标人）SI-SDRi 约 **−59 dB**，即完全没有拒识能力；
-- 干净数据上的上界（另一条独立实验）为 **+3.3297 dB**，与上面的网格增益**不是同一把尺子**，不要混引。
+- 干净数据上的上界（另一组对照条件）为 **+3.3297 dB**，与上面的网格增益**不是同一把尺子**，不要混引。
 
 因此本仓库的贡献是：**完整实现并量化了"空间特征早融合"这条技术路线，给出可复现的结论**，
 而不是宣称在分离质量上超过开源基线。
@@ -90,38 +89,38 @@ python separate_B.py 素材/main_meeting_pos_d8m_1580-141083-0053.wav --outdir �
 ```
 .
 ├─ 0_三步跑通.md              一页三步跑通（先看这份）
-├─ separate_B.py              主脚本：读录音 → 出两路
+├─ separate.py                主脚本：读录音 → 出两路
 ├─ spatial_feat.py            空间特征提取器（6 通道 ITD/ILD）
 ├─ conv_tasnet_spatial.py     网络定义（纯 PyTorch）
-├─ arm_models.py              加载与推理封装（严格加载 + 帧对齐）
+├─ model_loader.py            加载与推理封装（严格加载 + 帧对齐）
 ├─ load_and_infer.py          最小示例：50 行看懂怎么加载、怎么喂
 ├─ config.json                结构配方 + 空间特征契约 + 训练溯源
-├─ 臂B_模型.pt                权重：20 389 069 B / md5 c04bfb9257351ecb7b95bef369bfec6a / 345 张量
+├─ convtasnet_spatial.pt      权重：20 389 069 B / md5 c04bfb9257351ecb7b95bef369bfec6a / 345 张量
 ├─ space_feat_stats.json      6 通道标准化标尺（md5 f0041eb724322535e0016b896722d2ff）
 ├─ 素材/                      6 条 7 通道 16 kHz 仿真样本 + 素材清单.csv
 ├─ README.md                  本文档
 ├─ LICENSE                    本仓库原创代码与文档的许可（BSD-3-Clause）
 ├─ THIRD_PARTY_NOTICES.md     第三方组件许可与署名（asteroid MIT / 权重 CC BY-SA 4.0）
-└─ 训练记录/                  留档：ckpt_B_ep30.pt + asteroid 版代码 + 随包官方底座 + 模型说明
+└─ 训练记录/                  留档：ckpt_ep30.pt + 训练侧代码 + 随包官方底座 + 模型说明
 ```
 
 ## 训练口径
 
 - **起点**：官方 `JorisCos/ConvTasNet_Libri2Mix_sepclean_16k`
   （20 394 640 B / md5 `42e901d57d7c2f79b9d8a74a8077b7b0`，随包在 `训练记录/代码/pretrained/`）
-- **训练集**：自建仿真远场 `data/sim_train_20h`，**5777 条 / 原始 20.46 h**
+- **训练集**：自建仿真远场训练集，**5777 条 / 原始 20.46 h**
   （装载丢弃短于 3 s 的 132 条 → 每 epoch 5645 条 / 可用 20.37 h）
 - **优化**：Adam，lr 1e-4 + warmup 500 步 + 余弦退火，weight decay 0；
   batch 2 × 累积 4 = **有效 8**；3 s 段（48000 样本）；**PIT SI-SDR** 损失；梯度裁剪 5
 - **其他**：`--deterministic` 开、seed 26；**30 epoch**，交付最后一个 epoch，不做验证集与早停
-- **耗时**：臂 B 单臂 30 epoch 实测 **19 090 s（≈5.3 h，约 4.1 it/s）**；臂 A 同数据同为 30 epoch 为 21 247 s
+- **耗时**：30 epoch 实测 **19 090 s（≈5.3 h，约 4.1 it/s）**
 - **训练环境**：PyTorch 2.11.0+cu128
 
-> 训练数据与仿真生成脚本**不在本仓库**（在参赛材料包内）。权重不可再生成，请备份 `臂B_模型.pt`。
+> 训练数据与仿真生成脚本**不在本仓库**（属于内部训练资产）。权重不可再生成，请备份 `convtasnet_spatial.pt`。
 
 ## 结构对照
 
-| | 官方 Conv-TasNet | **本仓库（臂 B）** | 对照臂 A |
+| | 官方 Conv-TasNet | **本模型** | 单通道基线（同数据、同轮数微调） |
 |---|---|---|---|
 | 输入 | 单通道波形 | 单通道波形（ch1）+ **6 路 ITD/ILD** | 单通道波形 |
 | `bottleneck` 输入通道 | 512 | **518** | 512 |
@@ -130,7 +129,7 @@ python separate_B.py 素材/main_meeting_pos_d8m_1580-141083-0053.wav --outdir �
 | RTF（4 s，稳态） | — | 0.0049 | 0.0051 |
 | 需要什么硬件 | 任意麦克风 | **2 cm 间距线性三麦** | 任意麦克风 |
 
-两臂的**唯一结构差别**就是 `bottleneck` 那一层的输入通道数 —— 这是"早融合空间特征"
+本模型相对官方底座**唯一的结构改动**就是 `bottleneck` 那一层的输入通道数 —— 这是"早融合空间特征"
 这个自变量能被干净归因的前提。
 
 结构参数（逐字抄自官方配方）：`FreeFB`；`n_filters=512` / `kernel_size=32` / `stride=16`；
@@ -163,29 +162,29 @@ python separate_B.py 素材/main_meeting_pos_d8m_1580-141083-0053.wav --outdir �
 | 算法 | Conv-TasNet（Luo & Mesgarani, TASLP 2019） | 论文 |
 | 参考实现 | asteroid 0.7.0（网络定义是它的逐行等价移植） | **MIT** |
 | 权重起点与配方 | HuggingFace `JorisCos/ConvTasNet_Libri2Mix_sepclean_16k`（作者 Cosentino Joris） | **CC BY-SA 4.0** |
-| **臂 B 微调权重** `臂B_模型.pt`（含训练检查点 `训练记录/ckpt_B_ep30.pt`） | 拾音客（**改编自**上面的起点权重） | **CC BY-SA 4.0** |
+| **本模型微调权重** `convtasnet_spatial.pt`（含训练检查点 `训练记录/ckpt_ep30.pt`） | 拾音客（**改编自**上面的起点权重） | **CC BY-SA 4.0** |
 | 随包再分发的起点权重 `训练记录/代码/pretrained/` | 同上（原样再分发） | **CC BY-SA 4.0** |
 | 训练语音干声 | LibriSpeech（openslr.org/12） | CC BY 4.0 |
 | 房间冲激响应 | 自建（pyroomacoustics 镜像源法仿真） | MIT |
 | 本仓库**原创**的代码与文档 | 拾音客 | **BSD-3-Clause**（见 [`LICENSE`](LICENSE)） |
 
-- **改编声明（CC BY-SA 要求）**：`臂B_模型.pt` 与训练检查点 `训练记录/ckpt_B_ep30.pt` 是在 Cosentino Joris 的
+- **改编声明（CC BY-SA 要求）**：`convtasnet_spatial.pt` 与训练检查点 `训练记录/ckpt_ep30.pt` 是在 Cosentino Joris 的
   `ConvTasNet_Libri2Mix_sepclean_16k` 基础上**修改**得到的 —— 在自建仿真远场训练集上微调 30 轮，
-  并把 `masker.bottleneck` 的 1×1 卷积输入通道由 512 扩到 518（接入 6 路 ITD/ILD 空间特征），其余结构未改。
+  并把 `masker.bottleneck` 的 1×1 卷积输入通道由 512 扩到 518，其余结构未改。
   本仓库的微调权重与随包的起点权重均以 **CC BY-SA 4.0** 提供，署名 **Cosentino Joris**。
 - **`LICENSE`（BSD-3-Clause）只覆盖本仓库原创的代码与文档**：不覆盖任何权重文件、不覆盖
-  `素材/` 中的样本、也不覆盖移植自 asteroid 的网络定义（那部分是 MIT）。
+  `素材/` 中的样本、也不覆盖逐行移植自 asteroid 的网络定义（那部分是 MIT）。
 - `素材/` 中的 6 条样本由 LibriSpeech 干声 + 自建 RIR 仿真混合生成（**已做修改**），
   使用与再分发请保留 LibriSpeech 的 **CC BY 4.0** 署名。
 
 ## 引用
 
 ```bibtex
-@misc{tse-armB-2026,
-  title  = {远场目标说话人精准提取 · 臂 B：Conv-TasNet + 6 路 ITD/ILD 空间特征早融合},
+@misc{convtasnet-spatial-2026,
+  title  = {ConvTasNet-Spatial：Conv-TasNet + 6 路 ITD/ILD 空间特征早融合的远场双说话人分离},
   author = {{拾音客}},
   year   = {2026},
   note   = {2026 iCAN 大学生创新创业大赛 AI 应用创新挑战赛参赛作品},
-  url    = {https://github.com/deserted1011/ConvTasNet-Spatial}
+  url    = {https://github.com/lvliyudashuai/ConvTasNet-Spatial}
 }
 ```

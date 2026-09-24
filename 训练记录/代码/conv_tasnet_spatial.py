@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""实验 C 两臂模型：原版 Conv-TasNet  vs  +空间特征早融合（N_SPATIAL 路）
+"""Conv-TasNet + 空间特征早融合（N_SPATIAL 路）—— 训练侧实现（基于 asteroid）
 
-对应《实施方案》§6 实验 C；设计口径与受控变量见 docs/decision_log.md D-27。
-
-臂 A（原版）    ch1 单通道波形 -> Conv-TasNet（asteroid 预训练权重，结构原样不动）
-臂 B（早融合）  同一段 ch1 波形 + 逐帧对齐的 N_SPATIAL 个空间特征，在
-                masker.bottleneck 的 1x1 卷积处沿通道维拼接（512 -> 512+N_SPATIAL）。
-                N_SPATIAL=6 时是 linear3 三对的 (0,1)(0,2)(1,2) x (ITD/ILD)（O-08）；
-                N_SPATIAL=2 时是老的单对 (0,1)（D-17）。
+在官方 Conv-TasNet 底座上，把逐帧对齐的 N_SPATIAL 个空间特征在
+masker.bottleneck 的 1x1 卷积处沿通道维拼接（512 -> 512+N_SPATIAL）。
+N_SPATIAL=6 时是 linear3 三对的 (0,1)(0,2)(1,2) x (ITD/ILD)。
 
 ===========================================================================
 拼接点为什么必须在 GlobLN 之后（这是本文件最重要的一条）
@@ -18,19 +14,19 @@ asteroid 的 masker.bottleneck = Sequential(GlobLN(), Conv1d(512, 128, 1))
 GlobLN 的 mean / var 是**跨通道**统计的。如果把空间通道拼在 GlobLN 之前：
     - 归一化统计量会从 512 通道变成 512+N_SPATIAL 通道；
     - 原有 512 通道的归一化输出也随之改变；
-    => 第 0 步两臂输出就已经不同，"差异只能来自空间线索"这句话不成立。
+    => 起点权重下输出就已经和官方底座不同，"差异只能来自空间线索"这句话不成立。
 
 拼在 GlobLN 之后 + 新增 N_SPATIAL 列权重置 0：
-    - 前向：新列贡献恒为 0 => 第 0 步两臂**逐元素恒等**（与空间特征取值无关）；
+    - 前向：新列贡献恒为 0 => 起点权重下与官方底座**逐元素恒等**（与空间特征取值无关）；
     - 反向：新列的梯度 = dL/dy * 特征^T != 0 => 空间线索照样能学进去。
-代价：空间特征不经过 GlobLN。这反而是对的 —— D-26 冻结的 z-score 统计量本来
-就把它标准化过了，再走一次 GlobLN 等于被数据集的全局统计量二次归一。
+代价：空间特征不经过 GlobLN。这反而是对的 —— 训练集统计量本来
+就把它 z-score 标准化过了，再走一次 GlobLN 等于被全局统计量二次归一。
 
 ===========================================================================
 帧对齐
 ===========================================================================
 编码器 stride=16 / kernel=32 / padding=0  =>  L = (T - 32) // 16 + 1
-sim/spatial_feat.py 产出 n_frames = T // 16 = L + 1（尾部多 1 帧）
+特征生成侧产出 n_frames = T // 16 = L + 1（尾部多 1 帧）
 本模块取前 L 帧，多出的 <= MAX_EXTRA_FRAMES 帧丢弃，超过就报错（防接错位）。
 
 时间约定：空间特征第 t 帧的窗中心 = 16t + 7.5 样本，编码器第 t 帧中心 = 16t + 16，
@@ -54,29 +50,28 @@ import torch.nn.functional as F
 
 CKPT = "JorisCos/ConvTasNet_Libri2Mix_sepclean_16k"
 HERE = os.path.dirname(os.path.abspath(__file__))
-LOCAL_CKPT_ROOT = os.environ.get("TSE_PRETRAINED_ROOT", os.path.join(HERE, "pretrained"))
-# 空间特征通道数（O-08）。1 对 (0,1) 时是 2；六通道版用 linear3 的 3 对 -> 6。
-# 改这一个数会同时影响：build_arm_b 的 bottleneck 输入通道（512 -> 512+N_SPATIAL）、
-# tse_dataset.py（从这里 import）、preflight_train.py 的形状校验、eval_expC 的加载。
-# 老的 2 通道 ckpt（runs/expC_B）在这之后**加载会直接报形状不匹配** —— 这是刻意的，
-# 防止拿 2 通道权重去跑 6 通道数据而静默出错。
+LOCAL_CKPT_ROOT = os.environ.get("PRETRAINED_ROOT", os.path.join(HERE, "pretrained"))
+# 空间特征通道数。1 对 (0,1) 时是 2；六通道版用 linear3 的 3 对 -> 6。
+# 改这一个数会同时影响：build_spatial_model 的 bottleneck 输入通道（512 -> 512+N_SPATIAL）
+# 以及所有依赖它的形状校验。老的 2 通道 ckpt 在这之后**加载会直接报形状不匹配** ——
+# 这是刻意的，防止拿 2 通道权重去跑 6 通道数据而静默出错。
 N_SPATIAL = 6
 MAX_EXTRA_FRAMES = 2
 STRIDE = 16
 KERNEL = 32
 SR = 16000
-DATA_ROOT = os.environ.get("TSE_SIM_ROOT", "/mnt/d/tse_project/data/sim")
+DATA_ROOT = os.environ.get("SIM_ROOT", os.path.join(HERE, "data", "sim"))
 
 
 # ------------------------------------------------------------------ 数值策略
 def set_numeric_policy(tf32=False):
     """关掉 TF32（默认关）。
 
-    实验 C 的公平性论证依赖「第 0 步两臂逐元素恒等」。但 PyTorch 默认
+    「起点权重下与官方底座逐元素恒等」这条论证依赖数值一致。但 PyTorch 默认
     `cudnn.allow_tf32 = True`：bottleneck 的输入通道变成 512+N_SPATIAL 之后，
     cuDNN 会为这两层选到**不同精度**的 kernel，单层相对差 ~3e-7，经 24 层 TCN
-    放大到 ~1.2e-3（GPU 实测 max|A-B| = 255，而 |y| ~ 2.2e5）。
-    关掉 TF32 后 GPU 上恢复**精确 0**。见 docs/decision_log.md P-35。
+    放大到 ~1.2e-3（GPU 实测 max|Δ| = 255，而 |y| ~ 2.2e5）。
+    关掉 TF32 后 GPU 上恢复**精确 0**。
     """
     torch.backends.cudnn.allow_tf32 = bool(tf32)
     torch.backends.cuda.matmul.allow_tf32 = bool(tf32)
@@ -88,7 +83,7 @@ set_numeric_policy(False)
 # ------------------------------------------------------------------ 模型
 
 def local_ckpt_path(ckpt=CKPT, root=None):
-    """本地离线权重路径（存在才返回）。落点与 md5 见 baselines/README.md。"""
+    """本地离线权重路径（存在才返回）。"""
     root = root or LOCAL_CKPT_ROOT
     p = os.path.join(root, ckpt.split("/")[-1], "pytorch_model.bin")
     return p if os.path.exists(p) else None
@@ -100,7 +95,7 @@ def load_pretrained(ckpt=CKPT, prefer_local=True):
     本地权重文件里装的就是 conf dict（model_name / model_args / state_dict），
     所以 torch.load -> ConvTasNet.from_pretrained(conf) 完全不触发下载。
     注意用 model(wav) 前向，不要用 separate()（model_args.sample_rate 被写成 8000，
-    separate 会报错或在 resample=True 下静默降采样），见 baselines/README.md / P-32。
+    separate 会报错或在 resample=True 下静默降采样）。
     """
     from asteroid.models import ConvTasNet
     local = local_ckpt_path(ckpt) if prefer_local else None
@@ -170,7 +165,7 @@ class SpatialTDConvNet(object):
 
     TDConvNet 的原始 forward 源码见 asteroid 0.7.0 的 masker.tdconvnet；
     这里逐行照抄，唯一差别是 bottleneck 多收一个 spatial 参数。
-    实例化方式见 build_arm_b()：直接把已有 masker 实例的 __class__ 换成这个类，
+    实例化方式见 build_spatial_model()：直接把已有 masker 实例的 __class__ 换成这个类，
     权重、子模块、超参一个都不动。
     """
 
@@ -217,12 +212,12 @@ class ConvTasNetSpatial(object):
         return decoded.squeeze(0) if squeeze else decoded
 
 
-def build_arm_b(base=None, n_spatial=N_SPATIAL):
-    """在预训练模型上做**最小改动**：bottleneck 的 1x1 卷积 512 -> 512+N_SPATIAL，新列置 0。
+def build_spatial_model(base=None, n_spatial=N_SPATIAL):
+    """在预训练底座上做**最小改动**：bottleneck 的 1x1 卷积 512 -> 512+N_SPATIAL，新列置 0。
 
     注意：改造是**原地**的（直接换掉 base.masker.bottleneck 并改 __class__）。
-    所以传入 base 时先 deepcopy —— 否则臂 A 会被就地改造成臂 B，
-    "两臂对照"瞬间变成"自己跟自己比"。
+    所以传入 base 时先 deepcopy —— 否则传进来的官方底座会被就地改造，
+    后面再想拿它做对照，那就已经不是原来那个模型了。
     """
     base = load_pretrained() if base is None else copy.deepcopy(base)
     old = base.masker.bottleneck
@@ -244,15 +239,6 @@ def build_arm_b(base=None, n_spatial=N_SPATIAL):
     base.masker.__class__ = type("SpatialTDConvNet", (SpatialTDConvNet, type(base.masker)), {})
     base.__class__ = type("ConvTasNetSpatial", (ConvTasNetSpatial, type(base)), {})
     return base
-
-
-def build_arm(name):
-    """name: 'A' 原版 / 'B' 早融合。两臂权重都来自同一份预训练 checkpoint。"""
-    if name == "A":
-        return load_pretrained()
-    if name == "B":
-        return build_arm_b()
-    raise ValueError("未知臂：%r" % name)
 
 
 # ------------------------------------------------------------------ 工具
@@ -309,10 +295,10 @@ def load_real_sample(root=DATA_ROOT, subset="main"):
 
 def check_shapes():
     print("[1] state_dict 形状对比（改结构前必须确认只有那一层变）")
-    a = build_arm("A")
+    a = load_pretrained()
     da = state_dict_shapes(a)
     n_a = sum(p.numel() for p in a.parameters())
-    b = build_arm_b(a)
+    b = build_spatial_model(a)
     db = state_dict_shapes(b)
     n_b = sum(p.numel() for p in b.parameters())
     d = diff_shapes(da, db)
@@ -333,27 +319,27 @@ def check_forward(model=None, T=16000):
     print("[2] forward 冒烟（随机波形，%d 样本 = %.2f s）" % (T, T / SR))
     torch.manual_seed(0)
     wav = torch.randn(1, T) * 0.1
-    a = build_arm("A")
-    b = model if model is not None else build_arm_b(a)
+    a = load_pretrained()
+    b = model if model is not None else build_spatial_model(a)
     L = (T - KERNEL) // STRIDE + 1
     sp = torch.randn(1, N_SPATIAL, L)
     with torch.no_grad():
         ya = a(wav)
         yb = b(wav, sp)
-    print("    臂 A 输出 %s | 臂 B 输出 %s | 编码器帧数 L=%d" % (tuple(ya.shape), tuple(yb.shape), L))
-    assert ya.shape == yb.shape, "两臂输出形状不一致"
+    print("    官方底座输出 %s | 本模型输出 %s | 编码器帧数 L=%d" % (tuple(ya.shape), tuple(yb.shape), L))
+    assert ya.shape == yb.shape, "两者输出形状不一致"
     assert yb.dim() == 3 and yb.shape[1] == 2
     print("    PASS")
 
 
 def check_identity(model=None):
-    """零初始化零和：第 0 步两臂必须逐元素一致（含正对照）。"""
-    print("[3] 接线自检：第 0 步两臂等价 + 正对照")
+    """零初始化：起点权重下必须与官方底座逐元素一致（含正对照）。"""
+    print("[3] 接线自检：起点权重下与官方底座等价 + 正对照")
     T = 16000
     torch.manual_seed(0)
     wav = torch.randn(1, T) * 0.1
-    a = build_arm("A")
-    b = model if model is not None else build_arm_b(a)
+    a = load_pretrained()
+    b = model if model is not None else build_spatial_model(a)
     L = (T - KERNEL) // STRIDE + 1
     with torch.no_grad():
         ya = a(wav)
@@ -361,8 +347,8 @@ def check_identity(model=None):
                           ("随机特征", torch.randn(1, N_SPATIAL, L) * 5.0)]:
             yb = b(wav, sp)
             d = (ya - yb).abs().max().item()
-            print("    %s：max|A-B| = %.3e" % (label, d))
-            assert d == 0.0, "第 0 步两臂不等价（%s）=> 拼接位置或初始化有问题" % label
+            print("    %s：max|Δ| = %.3e" % (label, d))
+            assert d == 0.0, "起点权重下与官方底座不等价（%s）=> 拼接位置或初始化有问题" % label
         # 正对照：把新列改为非零，输出必须变 —— 证明这条路真的接通了
         conv = b.masker.bottleneck.conv
         n_old = conv.in_channels - N_SPATIAL
@@ -370,11 +356,11 @@ def check_identity(model=None):
             conv.weight[:, n_old:] = 0.01
         yc = b(wav, torch.randn(1, N_SPATIAL, L))
         d2 = (ya - yc).abs().max().item()
-        print("    正对照（新列置 0.01）：max|A-B| = %.3e  <- 必须 > 0" % d2)
+        print("    正对照（新列置 0.01）：max|Δ| = %.3e  <- 必须 > 0" % d2)
         assert d2 > 0.0, "新列非零时输出仍不变 => 空间通道其实没接上"
         with torch.no_grad():
             conv.weight[:, n_old:].zero_()
-    print("    PASS：第 0 步恒等（且与特征取值无关），新列非零时输出确实改变")
+    print("    PASS：起点权重下恒等（且与特征取值无关），新列非零时输出确实改变")
 
 
 def check_data(root=DATA_ROOT):
@@ -387,19 +373,19 @@ def check_data(root=DATA_ROOT):
     print("    编码器帧数 L = %d | 特征帧数 = %d | 差 %d" % (L, sp.shape[-1], sp.shape[-1] - L))
     assert sp.shape[-1] - L <= MAX_EXTRA_FRAMES, "帧数差超过容忍上限"
     ch1 = x[1:2].unsqueeze(0)          # 3mic 线性阵的参考通道 = ch1
-    a = build_arm("A")
-    b = build_arm_b()
+    a = load_pretrained()
+    b = build_spatial_model()
     b.eval()
-    assert not isinstance(a, ConvTasNetSpatial), "臂 A 被就地改造成臂 B 了"
+    assert not isinstance(a, ConvTasNetSpatial), "官方底座被就地改造了"
     assert isinstance(b, ConvTasNetSpatial)
     with torch.no_grad():
         ya = a(ch1)
         yb = b(ch1, sp)
         yb_zero = b(ch1, torch.zeros_like(sp))
-    print("    臂 A %s | 臂 B %s" % (tuple(ya.shape), tuple(yb.shape)))
-    print("    第 0 步 max|A-B(真实特征)| = %.3e | max|A-B(零特征)| = %.3e"
+    print("    官方底座 %s | 本模型 %s" % (tuple(ya.shape), tuple(yb.shape)))
+    print("    起点权重 max|Δ(真实特征)| = %.3e | max|Δ(零特征)| = %.3e"
           % ((ya - yb).abs().max().item(), (ya - yb_zero).abs().max().item()))
-    assert torch.equal(ya, yb), "真实样本上第 0 步两臂不等价"
+    assert torch.equal(ya, yb), "真实样本上起点权重与官方底座不等价"
     print("    PASS")
 
 

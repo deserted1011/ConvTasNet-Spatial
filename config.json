@@ -1,5 +1,5 @@
 {
-  "_what": "臂 B 模型的结构配方）",
+  "_what": "模型结构配方（网络参数 + 空间特征契约 + 训练溯源）",
   "_why": "搭建网络依赖",
   "format_version": 1,
   "model_name": "ConvTasNet",
@@ -23,10 +23,10 @@
     "encoder_activation": null
   },
   "_model_args_note": "官方 JorisCos/ConvTasNet_Libri2Mix_sepclean_16k 的配方（sample_rate=8000 是官方自己写错的值：前向用 model(wav)，不要用 model.separate()，后者会按 8000 处理采样率）",
-  "arm_b_patch": {
+  "spatial_extension": {
     "spatial_channels": 6,
     "bottleneck_in_channels": 518,
-    "note": "在官方结构上只改一处：masker.bottleneck 的 1x1 卷积输入通道 512 -> 518（多出的 6 列接空间特征，新增列初始为 0）。其余（编码器/TCN/解码器）与官方完全一致。加载臂 B 权重时 345 个张量全部被覆盖，官方权重一个数都不参与。",
+    "note": "在官方结构上只改一处：masker.bottleneck 的 1x1 卷积输入通道 512 -> 518（多出的 6 列接空间特征，新增列初始为 0）。其余（编码器/TCN/解码器）与官方完全一致。加载本模型权重时 345 个张量全部被覆盖，官方权重一个数都不参与。",
     "encoder": {"n_filters": 512, "kernel": 32, "stride": 16},
     "frame_contract": "Lf = (T - 32) // 16 + 1；空间特征比它多 1 帧（T // 16），尾部那 1 帧必须丢弃"
   },
@@ -43,13 +43,12 @@
     "input_channels": ">=3（第 4 路起忽略；7 通道样本可直接用前 3 路）",
     "sample_rate": 16000,
     "scaler": "space_feat_stats.json",
-    "scaler_note": "**训练时那份（train-fit），不是自拟合**：基于 5777 条 / 73 663 859 帧训练语料统计，所以本包跑出来的数字与报告里的数字是同一批，可以直接引用"
+    "scaler_note": "**训练时那份（train-fit），不是自拟合**：基于 5777 条 / 73 663 859 帧训练语料统计，所以本包跑出来的数字与 README 里引用的数字是同一批，可以直接引用"
   },
-  "weights_file": "臂B_模型.pt",
+  "weights_file": "convtasnet_spatial.pt",
   "weights_format": "纯 PyTorch state_dict（345 个张量 / 5 067 697 参数），已剥掉训练时的优化器动量与调度器状态",
   "num_params": 5067697,
   "training_provenance": {
-    "arm": "B（空间特征早融合）",
     "start_point": "JorisCos/ConvTasNet_Libri2Mix_sepclean_16k（官方预训练，md5 42e901d57d7c2f79b9d8a74a8077b7b0）",
     "train_set": "自建仿真远场训练集 5777 条 / 20.46 h（英文 LibriSpeech 干声 + 自建 RIR）",
     "epochs": 30,
@@ -59,7 +58,7 @@
     "loss": "PIT SI-SDR",
     "seed": 26,
     "deterministic": true,
-    "source_ckpt": "ckpt_B_ep30.pt（60 702 977 B / md5 13aea312d9a717c617b6daaa87431bcb，含 Adam 动量，留作训练记录）"
+    "source_ckpt": "ckpt_ep30.pt（60 702 977 B / md5 13aea312d9a717c617b6daaa87431bcb，含 Adam 动量，留作训练记录）"
   },
   "known_limits_note": "用法与边界见 README.md「必须声明的边界」一节"
 }

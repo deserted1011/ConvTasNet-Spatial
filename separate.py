@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""separate_B.py —— 臂 B 分离主脚本（这个包里**唯一**需要你跑的入口）
+"""separate.py —— 分离主脚本（这个包里**唯一**需要你跑的入口）
 
-把一段**远场混合录音**分成两路。用法与臂 A 版一致，唯一区别：输入必须带
+把一段**远场混合录音**分成两路。输入必须带
 **>= 3 个麦克风通道**（ch0/ch1/ch2 = 2 cm 间距的线性三麦，ch1 是参考麦）。
 
-    python separate_B.py 三麦录音.wav
-    python separate_B.py 三麦录音.wav --outdir 结果 --device cpu
-    python separate_B.py 长录音.wav --segment-seconds 15 --overlap-seconds 1
+    python separate.py 三麦录音.wav
+    python separate.py 三麦录音.wav --outdir 结果 --device cpu
+    python separate.py 长录音.wav --segment-seconds 15 --overlap-seconds 1
 
 输出（默认与输入同目录 / `--outdir`）：
     <输入名>_spk1.wav     16 kHz / PCM16 / 峰值归一 0.9
@@ -29,7 +29,7 @@ import time
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = HERE                                  # 本脚本与 config.json / 权重 / 标尺同目录（交付包根）
+ROOT = HERE                                  # 本脚本与 config.json / 权重 / 标尺同目录（本包根目录）
 if HERE not in sys.path:
     sys.path.insert(0, HERE)
 
@@ -62,7 +62,7 @@ def _io_backend():
             return np.ascontiguousarray(x.T.astype(np.float32)), int(sr)
 
         def write(p, y, sr):
-            # scipy 要 [样点, 声道]，本项目内部一律 [声道, 样点] —— 二维时必须转置，
+            # scipy 要 [样点, 声道]，本包内部一律 [声道, 样点] —— 二维时必须转置，
             # 否则样点数会被当成声道数写进 WAV 头（长音频直接 struct.error）
             y = np.asarray(y)
             if y.ndim == 2:
@@ -152,11 +152,11 @@ def segment_ranges(T, seg, ov):
 
 
 def main():
-    ap = argparse.ArgumentParser(description="臂 B（空间特征早融合）分离脚本")
+    ap = argparse.ArgumentParser(description="分离脚本（Conv-TasNet + 空间特征早融合）")
     ap.add_argument("input", help="输入音频路径，**>= 3 通道**，16 kHz 最佳（其他采样率会自动重采样）")
     ap.add_argument("--outdir", default=None, help="输出目录（默认与输入同目录）")
     ap.add_argument("--config", default=os.path.join(ROOT, "config.json"), help="结构配方")
-    ap.add_argument("--ckpt", default=os.path.join(ROOT, "臂B_模型.pt"), help="臂 B 权重")
+    ap.add_argument("--ckpt", default=os.path.join(ROOT, "convtasnet_spatial.pt"), help="模型权重")
     ap.add_argument("--scaler", default=os.path.join(HERE, "space_feat_stats.json"),
                     help="标准化标尺（训练时那份 train-fit；换一份就等于换一套尺度）")
     ap.add_argument("--device", default=None, help="cpu / cuda（默认有显卡用 cuda）")
@@ -175,11 +175,11 @@ def main():
     with open(args.config, encoding="utf-8") as fh:
         cfg = json.load(fh)
 
-    from arm_models import infer, load_arm, n_frames_of   # 延迟导入：先报清楚参数错误
+    from model_loader import infer, load_model, n_frames_of   # 延迟导入：先报清楚参数错误
     import torch
 
     dev = args.device or ("cuda" if torch.cuda.is_available() else "cpu")
-    model, info = load_arm("B", ckpt=args.ckpt, device=dev)
+    model, info = load_model(ckpt=args.ckpt, device=dev)
     print("[1/4] 设备：%s（torch %s，io=%s）" % (info["device"], torch.__version__, IO_BACKEND))
     print("[2/4] 模型就绪：%d 参数（%.4f M），权重来自 %s（训练第 %s 轮，见 config.json）"
           % (info["n_params"], info["n_params"] / 1e6, os.path.basename(args.ckpt),
@@ -187,7 +187,7 @@ def main():
 
     x, sr = READ_WAV(args.input)
     if x.shape[0] < 3:
-        raise SystemExit("输入只有 %d 个通道：臂 B 需要 >= 3（ch0/ch1/ch2 = linear3）" % x.shape[0])
+        raise SystemExit("输入只有 %d 个通道：本模型需要 >= 3（ch0/ch1/ch2 = linear3）" % x.shape[0])
     if args.ref_channel >= x.shape[0]:
         raise SystemExit("--ref-channel %d 超出通道数 %d" % (args.ref_channel, x.shape[0]))
     x, sr = resample(x, sr)
@@ -212,7 +212,7 @@ def main():
     for s, e in ranges:
         Lf = n_frames_of(e - s)
         sp = z[:, s // sfeat.HOP: s // sfeat.HOP + Lf + 1]
-        y = infer(model, "B", wav[s:e], sp, device=info["device"])
+        y = infer(model, wav[s:e], sp, device=info["device"])
         w = np.ones(e - s, np.float32)
         if s > 0:
             n = min(ov, e - s); w[:n] = np.linspace(0.0, 1.0, n, endpoint=False, dtype=np.float32)

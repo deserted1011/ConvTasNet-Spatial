@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""conv_tasnet_spatial.py —— 臂 B（空间特征早融合 Conv-TasNet）网络定义，纯 PyTorch。
+"""conv_tasnet_spatial.py —— Conv-TasNet + 空间特征早融合 的网络定义，纯 PyTorch。
 
 这个文件在本包里扮演的角色，和 HuggingFace 模型目录里的「建模代码」完全一样：
-    读同目录的 config.json  ->  按配方把网络搭出来  ->  灌入 臂B_模型.pt 的权重
+    读同目录的 config.json  ->  按配方把网络搭出来  ->  灌入 convtasnet_spatial.pt 的权重
 **不需要 asteroid、不需要联网、不需要任何外部权重文件。** 装上 torch + numpy 就能加载。
 
 为什么要自带一份，而不是 import asteroid
@@ -12,17 +12,17 @@
      的版本对 ConvTasNet 有过改动，撞上就不一定能加载）。
   2. 结构写在这里才可核对：config.json 是配方，本文件是照配方施工的代码；
      两者对不上会当场抛形状错误，而不是静默算错。
-  3. 本项目对官方结构只改了**一处**（见下），自带实现能把这一处写清楚、可验收。
+  3. 本模型对官方结构只改了**一处**（见下），自带实现能把这一处写清楚、可验收。
 
 与官方（asteroid 0.7.0）的关系
   本文件是 asteroid 0.7.0 的 `ConvTasNet` / `TDConvNet` / `Conv1DBlock` / `GlobLN`
   / `FreeFB` / `Encoder` / `Decoder` 的逐行等价实现，唯一的改动是 bottleneck：
       官方：GlobLN(512) -> Conv1d(512 -> 128, k=1)
-      本包：GlobLN(512) -> [沿通道维拼上 6 路空间特征] -> Conv1d(518 -> 128, k=1)
+      本模型：GlobLN(512) -> [沿通道维拼上 6 路空间特征] -> Conv1d(518 -> 128, k=1)
   除这一层的输入通道数 512 -> 518 外，编码器 / TCN / 解码器 / mask 头一字未改。
-  加载 臂B_模型.pt 时 345 个张量**全部**被覆盖，官方预训练权重一个数都不参与运算。
+  加载 convtasnet_spatial.pt 时 345 个张量**全部**被覆盖，官方预训练权重一个数都不参与运算。
 
-权重张量命名（345 个，与 臂B_模型.pt 严格一一对应）
+权重张量命名（345 个，与 convtasnet_spatial.pt 严格一一对应）
   encoder.filterbank._filters                  (512, 1, 32)   编码器滤波器组（可学）
   masker.bottleneck.0.gamma / .beta            (512,)         全局层归一化
   masker.bottleneck.1.weight / .bias           (128, 518, 1) / (128,)
@@ -39,7 +39,7 @@
 
 用法（当库）
     from conv_tasnet_spatial import load_model
-    model = load_model()                      # 读 config.json + 臂B_模型.pt
+    model = load_model()                      # 读 config.json + convtasnet_spatial.pt
     est = model(wav_tensor, spatial_tensor)   # [2, T]
 
 用法（自查）
@@ -63,16 +63,16 @@ STRIDE = 16
 KERNEL = 32
 SR = 16000
 DEFAULT_CONFIG = os.path.join(HERE, "config.json")
-DEFAULT_WEIGHTS = os.path.join(HERE, "臂B_模型.pt")
+DEFAULT_WEIGHTS = os.path.join(HERE, "convtasnet_spatial.pt")
 
 
 def set_numeric_policy(tf32=False):
     """关掉 TF32（默认关）。
 
     TF32 只影响 GPU：它会把 fp32 卷积偷偷降成 tf32（10 位尾数）。对本模型来说，
-    臂 A / 臂 B 的 bottleneck 输入通道不同（512 / 518），cuDNN 会为它们挑到不同精度的
-    kernel，单层相对差 ~3e-7，经 24 层 TCN 放大到 ~1e-3。关掉之后 GPU 上结果可复现，
-    与 CPU 结果一致。见项目 docs/decision_log.md 的 P-35。
+    bottleneck 的输入通道是 518（官方底座是 512），cuDNN 会为它挑到不同精度的 kernel，
+    单层相对差 ~3e-7，经 24 层 TCN 放大到 ~1e-3。关掉之后 GPU 上结果可复现，
+    与 CPU 结果一致。
     """
     torch.backends.cudnn.allow_tf32 = bool(tf32)
     torch.backends.cuda.matmul.allow_tf32 = bool(tf32)
@@ -186,7 +186,7 @@ class Conv1DBlock(nn.Module):
 
 
 class FusedBottleneck(nn.Sequential):
-    """GlobLN -> [拼空间特征] -> 1x1 卷积。**本包与官方唯一的差别就在这一层。**
+    """GlobLN -> [拼空间特征] -> 1x1 卷积。**本模型与官方唯一的差别就在这一层。**
 
     继承 nn.Sequential 是为了让子模块名仍然是 "0" / "1"，权重键名与官方完全一致；
     只有 bottleneck.1.weight 的输入维从 512 变成 518。
@@ -383,7 +383,7 @@ def load_config(path=DEFAULT_CONFIG):
 def build_model(cfg, n_spatial=None):
     """按 config.json 搭一个**随机初始化**的网络（权重随后载入）。"""
     a = dict(cfg["model_args"])
-    patch = cfg.get("arm_b_patch", {})
+    patch = cfg.get("spatial_extension", {})
     if n_spatial is None:
         n_spatial = patch.get("spatial_channels", N_SPATIAL)
     fb = str(a.pop("fb_name", "")).lower()
@@ -525,7 +525,7 @@ def check():
 
 
 def main():
-    ap = argparse.ArgumentParser(description="臂 B 网络定义（纯 PyTorch，自描述）")
+    ap = argparse.ArgumentParser(description="网络定义（纯 PyTorch，自描述）")
     ap.add_argument("--check", action="store_true", help="建网 + 载权重 + 前向自查")
     args = ap.parse_args()
     return check() if args.check else 0
