@@ -100,6 +100,8 @@ python separate_B.py 素材/main_meeting_pos_d8m_1580-141083-0053.wav --outdir �
 ├─ space_feat_stats.json      6 通道标准化标尺（md5 f0041eb724322535e0016b896722d2ff）
 ├─ 素材/                      6 条 7 通道 16 kHz 仿真样本 + 素材清单.csv
 ├─ README.md                  本文档
+├─ LICENSE                    本仓库原创代码与文档的许可（BSD-3-Clause）
+├─ THIRD_PARTY_NOTICES.md     第三方组件许可与署名（asteroid MIT / 权重 CC BY-SA 4.0）
 └─ 训练记录/                  留档：ckpt_B_ep30.pt + asteroid 版代码 + 随包官方底座 + 模型说明
 ```
 
@@ -154,18 +156,27 @@ python separate_B.py 素材/main_meeting_pos_d8m_1580-141083-0053.wav --outdir �
 
 ## 来源、许可与致谢
 
-| 组件 | 来源 | 许可 |
+**本仓库按部分适用不同许可**（逐件对照、许可原文与署名见 [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md)）：
+
+| 部分 | 来源 | 许可 |
 |---|---|---|
 | 算法 | Conv-TasNet（Luo & Mesgarani, TASLP 2019） | 论文 |
-| 参考实现 | asteroid 0.7.0 | MIT |
-| 底座权重与配方 | HuggingFace `JorisCos/ConvTasNet_Libri2Mix_sepclean_16k` | 随其模型卡 |
+| 参考实现 | asteroid 0.7.0（网络定义是它的逐行等价移植） | **MIT** |
+| 权重起点与配方 | HuggingFace `JorisCos/ConvTasNet_Libri2Mix_sepclean_16k`（作者 Cosentino Joris） | **CC BY-SA 4.0** |
+| **臂 B 微调权重** `臂B_模型.pt`（含训练检查点 `训练记录/ckpt_B_ep30.pt`） | 拾音客（**改编自**上面的起点权重） | **CC BY-SA 4.0** |
+| 随包再分发的起点权重 `训练记录/代码/pretrained/` | 同上（原样再分发） | **CC BY-SA 4.0** |
 | 训练语音干声 | LibriSpeech（openslr.org/12） | CC BY 4.0 |
 | 房间冲激响应 | 自建（pyroomacoustics 镜像源法仿真） | MIT |
-| 本仓库新增代码与权重 | 参赛团队成员 | 见下 |
+| 本仓库**原创**的代码与文档 | 拾音客 | **BSD-3-Clause**（见 [`LICENSE`](LICENSE)） |
 
-- `素材/` 中的 6 条样本由 LibriSpeech 干声 + 自建 RIR 仿真生成，使用与再分发请保留 LibriSpeech 的 CC BY 4.0 署名。
-- `训练记录/代码/pretrained/` 内是随包携带的官方底座权重，版权与许可归原作者。
-- 本仓库新增代码与训练权重由团队成员编写 / 训练，**尚未附加开源许可文件**；引用或复用请注明来源。
+- **改编声明（CC BY-SA 要求）**：`臂B_模型.pt` 与训练检查点 `训练记录/ckpt_B_ep30.pt` 是在 Cosentino Joris 的
+  `ConvTasNet_Libri2Mix_sepclean_16k` 基础上**修改**得到的 —— 在自建仿真远场训练集上微调 30 轮，
+  并把 `masker.bottleneck` 的 1×1 卷积输入通道由 512 扩到 518（接入 6 路 ITD/ILD 空间特征），其余结构未改。
+  本仓库的微调权重与随包的起点权重均以 **CC BY-SA 4.0** 提供，署名 **Cosentino Joris**。
+- **`LICENSE`（BSD-3-Clause）只覆盖本仓库原创的代码与文档**：不覆盖任何权重文件、不覆盖
+  `素材/` 中的样本、也不覆盖移植自 asteroid 的网络定义（那部分是 MIT）。
+- `素材/` 中的 6 条样本由 LibriSpeech 干声 + 自建 RIR 仿真混合生成（**已做修改**），
+  使用与再分发请保留 LibriSpeech 的 **CC BY 4.0** 署名。
 
 ## 引用
 
