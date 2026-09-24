@@ -171,8 +171,10 @@ python separate_B.py 素材/main_meeting_pos_d8m_1580-141083-0053.wav --outdir �
 
 ```bibtex
 @misc{tse-armB-2026,
-  title = {远场目标说话人精准提取 · 臂 B：Conv-TasNet + 6 路 ITD/ILD 空间特征早融合},
-  year  = {2026},
-  note  = {2026 iCAN 大学生创新创业大赛 AI 应用创新挑战赛参赛作品}
+  title  = {远场目标说话人精准提取 · 臂 B：Conv-TasNet + 6 路 ITD/ILD 空间特征早融合},
+  author = {{拾音客}},
+  year   = {2026},
+  note   = {2026 iCAN 大学生创新创业大赛 AI 应用创新挑战赛参赛作品},
+  url    = {https://github.com/deserted1011/ConvTasNet-Spatial}
 }
 ```
