@@ -1,6 +1,6 @@
 {
-  "_what": "臂 B 交付模型的结构配方（与 HuggingFace 模型目录里的 config.json 同一角色：告诉代码怎么把网络搭出来）",
-  "_why": "缺了它就没法搭网络。原先靠随包发一份 20 MB 的官方权重文件来'抄配方'，现在配方在这份 JSON 里，官方文件不必随包。",
+  "_what": "臂 B 模型的结构配方）",
+  "_why": "搭建网络依赖",
   "format_version": 1,
   "model_name": "ConvTasNet",
   "model_args": {
@@ -22,7 +22,7 @@
     "mask_act": "relu",
     "encoder_activation": null
   },
-  "_model_args_note": "逐字抄自官方 JorisCos/ConvTasNet_Libri2Mix_sepclean_16k 的配方（sample_rate=8000 是官方自己写错的值：前向用 model(wav)，不要用 model.separate()，后者会按 8000 处理采样率）",
+  "_model_args_note": "官方 JorisCos/ConvTasNet_Libri2Mix_sepclean_16k 的配方（sample_rate=8000 是官方自己写错的值：前向用 model(wav)，不要用 model.separate()，后者会按 8000 处理采样率）",
   "arm_b_patch": {
     "spatial_channels": 6,
     "bottleneck_in_channels": 518,
@@ -61,5 +61,5 @@
     "deterministic": true,
     "source_ckpt": "ckpt_B_ep30.pt（60 702 977 B / md5 13aea312d9a717c617b6daaa87431bcb，含 Adam 动量，留作训练记录）"
   },
-  "known_limits_note": "用法与边界见 README.md「必须声明的边界」一节；那份是诚实性要求，不得删改"
+  "known_limits_note": "用法与边界见 README.md「必须声明的边界」一节"
 }
